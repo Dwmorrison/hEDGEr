@@ -68,7 +68,6 @@ def kraken_API_balances(api, user):
     Account_value = float("{:.8f}".format(PAX_value+BTC_balance))
     date_time = timezone.now()
     Balances.objects.create(user = user, BTC_balance = BTC_balance, PAX_balance = PAX_balance, PAX_price=PAX_price, PAX_value=PAX_value, Account_value=Account_value, date_time = date_time)
-    
     return BTC_balance, PAX_balance, Account_value
 
 def kraken_API_rebalance(api, user):
@@ -80,11 +79,8 @@ def kraken_API_rebalance(api, user):
     PAX_balance = float(balances.PAX_balance)
     PAX_value = float(balances.PAX_value)
     PAX_price = float(balances.PAX_price)
-<<<<<<< HEAD
-=======
     Account_value = float("{:.8f}".format(PAX_value+BTC_balance))
     date_time = timezone.now()
->>>>>>> 30d074996118eabf39297f0c7f6137047f4132b6
     PAX_order_min = 0.004
     api_public = {"Time", "Assets", "AssetPairs", "Ticker", "OHLC", "Depth", "Trades", "Spread"}
     api_private = {"Balance"}
@@ -104,12 +100,7 @@ def kraken_API_rebalance(api, user):
     api_domain = "https://api.kraken.com"
     pair = 'PAXGXBT'
     if PAX_order_volume < PAX_order_min:
-<<<<<<< HEAD
-        status = 'hold'
-        print(status)
-=======
         api_reply = 'hold'
->>>>>>> 30d074996118eabf39297f0c7f6137047f4132b6
     else:
         api_method = 'AddOrder'
         api_data = f'pair={pair}&type={order_type}&ordertype=market&volume={PAX_order_volume}&oflags=fciq'
@@ -144,13 +135,89 @@ def kraken_API_rebalance(api, user):
             sys.exit(1)
         api_reply = json.loads(api_reply)
         api_reply = api_reply['result']
-<<<<<<< HEAD
-        print(api_reply)
-        Balances.objects.create(user = user, BTC_balance = BTC_balance, PAX_balance = PAX_balance, PAX_price=PAX_price, PAX_value=PAX_value, Account_value=Account_value, API_reply=api_reply, date_time = date_time)
-=======
     print(api_reply)
     Balances.objects.create(user = user, BTC_balance = BTC_balance, PAX_balance = PAX_balance, PAX_price=PAX_price, PAX_value=PAX_value, Account_value=Account_value, API_reply=api_reply, date_time = date_time)
->>>>>>> 30d074996118eabf39297f0c7f6137047f4132b6
+
+def kraken_API_automate(api, user):
+    for key in api:
+                api_key = key.api_key
+                secret_api = key.secret_api
+    balances = Balances.objects.filter(user=user).order_by('date_time').reverse()[0]
+    BTC_balance = float(balances.BTC_balance)
+    PAX_balance = float(balances.PAX_balance)
+    PAX_value = float(balances.PAX_value)
+    PAX_price = float(balances.PAX_price)
+    Account_value = float("{:.8f}".format(PAX_value+BTC_balance))
+    date_time = timezone.now()
+    PAX_order_min = 0.0045
+    api_public = {"Time", "Assets", "AssetPairs", "Ticker", "OHLC", "Depth", "Trades", "Spread"}
+    api_private = {"Balance"}
+    api_trading = {"AddOrder"}
+    if BTC_balance > PAX_value:
+        order_type = 'buy'
+    else:
+        order_type = 'sell'
+    
+    # print('$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$')
+    
+    BTC_order_volume = abs(float("{:.8f}".format(BTC_balance-PAX_value)))/2
+    PAX_order_volume = float("{:.8f}".format((BTC_order_volume/PAX_price)*0.9974)) # re evaluate for greater granularity should represent the fees?
+    print('BTC balance:              ', BTC_balance)
+    print('PAX balance:              ', PAX_value)
+    print('Volume to balance:   ', order_type, PAX_order_volume, 'PAX')
+    api_domain = "https://api.kraken.com"
+    pair = 'PAXGXBT'
+    deals_counter = 1
+    if PAX_order_volume < PAX_order_min:
+        api_reply = 'hold'
+    else:
+        api_method = 'AddOrder'
+        api_data = f'pair={pair}&type={order_type}&ordertype=market&volume={PAX_order_volume}&oflags=fciq'
+        if api_method in api_private or api_method in api_trading:
+            api_path = "/0/private/"
+            api_nonce = str(int(time.time()*1000))
+            for key in api:
+                api_key = key.api_key
+                secret_api = key.secret_api
+            try:
+                api_key = api_key
+                api_secret = base64.b64decode(secret_api)
+            except:
+                print("API public key and API private (secret) key must be in text files called API_Public_Key and API_Private_Key")
+                sys.exit(1)
+            api_postdata = api_data + "&nonce=" + api_nonce
+            api_postdata = api_postdata.encode('utf-8')
+            api_sha256 = hashlib.sha256(api_nonce.encode('utf-8') + api_postdata).digest()
+            api_hmacsha512 = hmac.new(api_secret, api_path.encode('utf-8') + api_method.encode('utf-8') + api_sha256, hashlib.sha512)
+            api_request = urllib2.Request(api_domain + api_path + api_method, api_postdata)
+            api_request.add_header("API-Key", api_key)
+            api_request.add_header("API-Sign", base64.b64encode(api_hmacsha512.digest()))
+            api_request.add_header("User-Agent", "Kraken REST API")
+        elif api_method in api_public:
+            api_path = "/0/public/"
+            api_request = urllib2.Request(api_domain + api_path + api_method + '?' + api_data)
+            api_request.add_header("User-Agent", "Kraken REST API")
+        try:
+            api_reply = urllib2.urlopen(api_request).read()
+        except Exception as error:
+            print("API call failed (%s)" % error)
+            sys.exit(1)
+        api_reply = json.loads(api_reply)
+        api_reply = api_reply['result']
+        deals_counter = deals_counter + 1
+    print(balances.id, balances.date_time, api_reply, order_type, PAX_order_volume, 'PAX', "..........", deals_counter, " deals")
+    return api_reply
+    Balances.objects.create(user = user, BTC_balance = BTC_balance, PAX_balance = PAX_balance, PAX_price=PAX_price, PAX_value=PAX_value, Account_value=Account_value, API_reply=api_reply, date_time = date_time)
+
+def timer(x):
+	start_time = int(time.time()*10)
+	seconds = x
+	while True:
+		now = int(time.time()*10)
+		elapsed_time = now - start_time
+		if elapsed_time == seconds:
+			start_time = int(time.time()*10)
+			return True
 
 def home(request):
     return render(request, 'pages/home.html')
@@ -270,6 +337,38 @@ def rebalance(request):
         'Account_value': Account_value,
             }
     return render(request, 'pages/rebalance.html', context)
+
+def automate(request):
+    api = API.objects.filter(user=request.user)
+    user = request.user
+
+    counter = 0
+    while True:
+        if timer(25):
+            counter += 1
+            kraken_API_balances(api, user)
+            kraken_API_automate(api, user)
+    
+    
+
+    callList = kraken_API_balances(api, user)
+
+    BTC_balance = callList[0]
+    PAX_balance = callList[1]
+    Account_value = callList[2]
+
+    serialize_balances = serializers.serialize('json', Balances.objects.filter(user=request.user))
+    
+    context = {
+        'callList': callList,
+        'serialize_balances': serialize_balances,
+        'api': api,
+        'BTC_balance':BTC_balance,
+        'PAX_balance':PAX_balance,
+        'Account_value': Account_value,
+            }
+    return render(request, 'pages/automate.html', context)
+
 
 @login_required
 def user_logout(request):

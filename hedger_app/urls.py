@@ -11,5 +11,6 @@ urlpatterns = [
     path('dashboard/', views.dashboard, name = 'dashboard'),
     path('rebalance/', views.rebalance, name = 'rebalance'),
     path('logout/', views.user_logout, name = 'logout'),
+    path('automate/', views.automate, name = 'automate'),
 
 ]
